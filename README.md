@@ -1,6 +1,10 @@
 # Paperclip Router for Codex
 
-Multi-account Codex account router for Paperclip with automatic failover, usage-aware skipping, and Windows DPAPI-encrypted local sessions.
+Do you have multiple smaller Codex Subscription accounts, but hate constantly logging out and back in just to keep Paperclip running?
+
+Paperclip Router for Codex solves exactly that problem.
+
+It automatically switches between your Codex Subscription accounts, skips unavailable ones, and helps Paperclip keep working with far less manual account switching.
 
 ## What it does
 
