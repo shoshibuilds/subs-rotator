@@ -1,0 +1,15 @@
+# Sensitive data — NEVER commit these
+# (stored in ~/.paperclip-router/, not in this folder — but just in case)
+*.bin
+router_config.json
+router_config.json.bak
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# PyInstaller build output
+dist/
+build/
+*.spec
