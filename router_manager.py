@@ -62,7 +62,7 @@ TYPE_LABELS = {
 
 # ─── Links ────────────────────────────────────────────────────────────────────
 
-GITHUB_URL = "https://github.com/shoshibuilds/paperclip-router"
+GITHUB_URL = "https://github.com/shoshibuilds/paperclip-router-codex"
 BMC_URL    = "https://ko-fi.com/shoshibuilds"
 VERSION    = "1.0.0"
 

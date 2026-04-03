@@ -78,6 +78,17 @@ Typical local data lives under:
 
 `C:\Users\<you>\.paperclip-router\`
 
+## Screenshots
+
+### Main window
+![Main window](screenshots/main-window.jpg)
+
+### Usage dialog
+![Usage dialog](screenshots/usage-dialog.jpg)
+
+### Paperclip setup
+![Paperclip setup](screenshots/paperclip-setup.jpg)
+
 ## Notes
 
 - This repository is the Codex-focused version of the router
