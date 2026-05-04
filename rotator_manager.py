@@ -1,7 +1,7 @@
 ﻿"""
 Subs Rotator
 Multi-account AI switcher for Paperclip - open source
-https://github.com/shoshibuilds/paperclip-subs-rotator
+https://github.com/shoshibuilds/subs-rotator
 """
 
 import json
@@ -94,7 +94,7 @@ OLLAMA_INSTALL_URL = "https://ollama.com/install.ps1"
 
 # â”€â”€â”€ Links â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-GITHUB_URL = "https://github.com/shoshibuilds/paperclip-subs-rotator"
+GITHUB_URL = "https://github.com/shoshibuilds/subs-rotator"
 BMC_URL    = "https://ko-fi.com/shoshibuilds"
 VERSION    = "1.2.1"
 

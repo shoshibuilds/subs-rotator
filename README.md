@@ -7,7 +7,7 @@ Now usable anywhere the target app can run an external command.
 
 Big win: Gemma 4 runs locally via Ollama, so Paperclip can run for free (or near-zero cost on VPS).
 
-GitHub: https://github.com/shoshibuilds/paperclip-subs-rotator
+GitHub: https://github.com/shoshibuilds/subs-rotator
 
 ## Supported account types
 
