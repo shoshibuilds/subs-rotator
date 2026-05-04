@@ -1,6 +1,6 @@
 """
-Universal AI Router
-Called from .bat files: python router.py --mode [codex|claude|all] [args...]
+Universal AI Rotator
+Called from .bat files: python rotator.py [--company slug] --mode [codex|claude|gemma|gemini|all] [args...]
 """
 
 import sys
@@ -20,7 +20,7 @@ from crypto import decrypt_session_to_file, load_encrypted_json, save_encrypted_
 from paths import (
     SESSIONS_DIR, CONFIG_FILE,
     CODEX_AUTH, CLAUDE_CREDS,
-    CODEX_CMD, CLAUDE_CMD,
+    CODEX_CMD, CLAUDE_CMD, GEMMA_CMD,
 )
 
 # ─── Rate limit signals ───────────────────────────────────────────────────────
@@ -86,8 +86,12 @@ def parse_retry_seconds(line: str, fallback_seconds: int = DEFAULT_COOLDOWN_SECO
 
 def load_config() -> dict:
     if not CONFIG_FILE.exists():
-        return {"accounts": []}
-    return load_encrypted_json(CONFIG_FILE) or {"accounts": []}
+        return {"accounts": [], "companies": [], "settings": {}}
+    cfg = load_encrypted_json(CONFIG_FILE) or {"accounts": [], "companies": [], "settings": {}}
+    cfg.setdefault("accounts", [])
+    cfg.setdefault("companies", [])
+    cfg.setdefault("settings", {})
+    return cfg
 
 def save_config(cfg: dict):
     save_encrypted_json(CONFIG_FILE, cfg)
@@ -153,7 +157,32 @@ def get_tool_cmd(tool: str, cfg: dict) -> str:
     custom = settings.get(f"{tool}_cmd_path", "").strip()
     if custom:
         return custom
-    return CODEX_CMD if tool == "codex" else CLAUDE_CMD
+    return {
+        "codex": CODEX_CMD,
+        "claude": CLAUDE_CMD,
+        "gemma": GEMMA_CMD,
+    }.get(tool, tool)
+
+def resolve_company(target: str | None, cfg: dict) -> dict | None:
+    if not target:
+        return None
+    companies = cfg.get("companies", [])
+    target_low = target.lower()
+    for company in companies:
+        if company.get("id") == target or str(company.get("slug", "")).lower() == target_low or str(company.get("name", "")).lower() == target_low:
+            return company
+    return None
+
+def filter_accounts_for_company(accounts: list[dict], company: dict | None) -> list[dict]:
+    if company is None:
+        return accounts
+    cid = company.get("id")
+    filtered = []
+    for account in accounts:
+        company_ids = account.get("company_ids", [])
+        if not company_ids or cid in company_ids:
+            filtered.append(account)
+    return filtered
 
 def _extract_model_arg(args: list[str]) -> tuple[str | None, int | None, int | None]:
     for i, arg in enumerate(args):
@@ -165,23 +194,63 @@ def _extract_model_arg(args: list[str]) -> tuple[str | None, int | None, int | N
             return args[i + 1], i, i + 1
     return None, None, None
 
+def _extract_prompt_arg(args: list[str]) -> tuple[str | None, list[str]]:
+    """Return (prompt, remaining_args) and strip Gemini-style CLI switches."""
+    prompt = None
+    remaining = []
+    skip_next = False
+    for i, arg in enumerate(args):
+        if skip_next:
+            skip_next = False
+            continue
+
+        if arg == "--prompt" and i + 1 < len(args):
+            prompt = args[i + 1]
+            skip_next = True
+            continue
+        if arg.startswith("--prompt="):
+            prompt = arg.split("=", 1)[1]
+            continue
+
+        # Gemini CLI compatibility flags passed through by Paperclip.
+        if arg in {"--output-format", "--approval-mode", "--sandbox"} and i + 1 < len(args):
+            skip_next = True
+            continue
+        if arg.startswith("--output-format=") or arg.startswith("--approval-mode=") or arg.startswith("--sandbox="):
+            continue
+        if arg == "--stream-json":
+            continue
+
+        remaining.append(arg)
+
+    return prompt, remaining
+
 def _normalize_args_for_account(account: dict, args: list[str]) -> list[str]:
     normalized = list(args)
+    typ = account.get("type", "")
+    if typ == "gemma":
+        prompt, remaining = _extract_prompt_arg(normalized)
+        if prompt:
+            remaining.append(prompt)
+        return remaining
+
     model, idx, value_idx = _extract_model_arg(normalized)
     if not model:
         return normalized
 
-    typ = account.get("type", "")
     if typ == "codex" and model in UNSUPPORTED_CHATGPT_CODEX_MODELS:
         if value_idx is None and idx is not None:
             normalized.pop(idx)
         elif idx is not None and value_idx is not None:
             del normalized[idx:value_idx + 1]
         print(
-            f"[router] {account.get('label')}: model '{model}' is not supported for Codex ChatGPT accounts, using CLI default instead.",
+            f"[rotator] {account.get('label')}: model '{model}' is not supported for Codex ChatGPT accounts, using CLI default instead.",
             flush=True,
         )
     return normalized
+
+def _gemma_model(cfg: dict) -> str:
+    return cfg.get("settings", {}).get("gemma_model", "gemma4:e4b")
 
 def cleanup_on_startup():
     """Delete plaintext session files if the user opted in."""
@@ -195,6 +264,15 @@ def cleanup_on_startup():
             pass
 
 # ─── Process runner ───────────────────────────────────────────────────────────
+
+def _is_gemma_compat_probe(args: list[str]) -> bool:
+    if not args:
+        return True
+    if any(arg in {"--help", "-h", "help", "/?"} for arg in args):
+        return True
+    if any(arg in {"--version", "-v", "version"} for arg in args):
+        return True
+    return len(args) >= 2 and args[0] == "auth" and args[1] == "login"
 
 def run_process(cmd: list, env: dict | None = None, fallback_cooldown_seconds: int = DEFAULT_COOLDOWN_SECONDS) -> tuple[bool, int]:
     """
@@ -225,16 +303,16 @@ def run_process(cmd: list, env: dict | None = None, fallback_cooldown_seconds: i
                 cooldown, parsed_exactly = parse_retry_seconds(line, fallback_cooldown_seconds)
                 h, m = cooldown // 3600, (cooldown % 3600) // 60
                 if parsed_exactly:
-                    print(f"[router] Rate limit — cooldown {h}h {m}m. Switching...", flush=True)
+                    print(f"[rotator] Rate limit — cooldown {h}h {m}m. Switching...", flush=True)
                 else:
-                    print(f"[router] Rate limit detected, but reset time was unclear. Using a short {cooldown}s retry window.", flush=True)
+                    print(f"[rotator] Rate limit detected, but reset time was unclear. Using a short {cooldown}s retry window.", flush=True)
                 proc.terminate()
                 proc.wait()
                 return True, cooldown
         proc.wait()
         return False, 0
     except FileNotFoundError:
-        print(f"[router] Command not found: {cmd[0]}", flush=True)
+        print(f"[rotator] Command not found: {cmd[0]}", flush=True)
         return False, 0
 
 # ─── Security helpers ────────────────────────────────────────────────────────
@@ -333,7 +411,7 @@ def prepare_account(account: dict) -> tuple[list, dict | None] | None:
     if typ == "codex":
         auth_file = account.get("auth_file", "")
         if not auth_file or not (SESSIONS_DIR / auth_file).exists():
-            print(f"[router] {label}: auth file not found, skipping.", flush=True)
+            print(f"[rotator] {label}: auth file not found, skipping.", flush=True)
             return None
         session_path = SESSIONS_DIR / auth_file
         session = load_encrypted_json(session_path)
@@ -341,12 +419,12 @@ def prepare_account(account: dict) -> tuple[list, dict | None] | None:
             if _codex_session_has_refresh(session):
                 try:
                     session = _refresh_codex_session(session_path, session)
-                    print(f"[router] {label}: session refreshed.", flush=True)
+                    print(f"[rotator] {label}: session refreshed.", flush=True)
                 except Exception as e:
-                    print(f"[router] {label}: session refresh failed ({e}), skipping.", flush=True)
+                    print(f"[rotator] {label}: session refresh failed ({e}), skipping.", flush=True)
                     return None
             else:
-                print(f"[router] {label}: session expired, skipping.", flush=True)
+                print(f"[rotator] {label}: session expired, skipping.", flush=True)
                 return None
         decrypt_session_to_file(session_path, CODEX_AUTH)
         _schedule_wipe(CODEX_AUTH)
@@ -359,7 +437,7 @@ def prepare_account(account: dict) -> tuple[list, dict | None] | None:
         if account.get("auth_file") and (SESSIONS_DIR / account["auth_file"]).exists():
             session = load_encrypted_json(SESSIONS_DIR / account["auth_file"])
             if not _is_session_valid(session):
-                print(f"[router] {label}: session expired, skipping.", flush=True)
+                print(f"[rotator] {label}: session expired, skipping.", flush=True)
                 return None
             decrypt_session_to_file(SESSIONS_DIR / account["auth_file"], CLAUDE_CREDS)
             _schedule_wipe(CLAUDE_CREDS)
@@ -367,21 +445,34 @@ def prepare_account(account: dict) -> tuple[list, dict | None] | None:
 
     elif typ == "openai_api":
         if not account.get("api_key"):
-            print(f"[router] {label}: API key missing, skipping.", flush=True)
+            print(f"[rotator] {label}: API key missing, skipping.", flush=True)
             return None
         env = os.environ.copy()
         env["OPENAI_API_KEY"] = account["api_key"]
         return [get_tool_cmd("codex", cfg)], env
 
+    elif typ == "openrouter_api":
+        if not account.get("api_key"):
+            print(f"[rotator] {label}: API key missing, skipping.", flush=True)
+            return None
+        env = os.environ.copy()
+        env["OPENAI_API_KEY"] = account["api_key"]
+        env["OPENAI_BASE_URL"] = "https://openrouter.ai/api/v1"
+        env["OPENAI_API_BASE"] = "https://openrouter.ai/api/v1"
+        return [get_tool_cmd("codex", cfg)], env
+
     elif typ == "anthropic_api":
         if not account.get("api_key"):
-            print(f"[router] {label}: API key missing, skipping.", flush=True)
+            print(f"[rotator] {label}: API key missing, skipping.", flush=True)
             return None
         env = os.environ.copy()
         env["ANTHROPIC_API_KEY"] = account["api_key"]
         return [get_tool_cmd("claude", cfg)], env
 
-    print(f"[router] {label}: unknown type '{typ}', skipping.", flush=True)
+    elif typ == "gemma":
+        return [get_tool_cmd("gemma", cfg), "run", _gemma_model(cfg)], None
+
+    print(f"[rotator] {label}: unknown type '{typ}', skipping.", flush=True)
     return None
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
@@ -391,19 +482,47 @@ def main():
     set_active_account(None)
     args = sys.argv[1:]
     mode = "all"
+    company_target = None
 
     if "--mode" in args:
         idx  = args.index("--mode")
         mode = args[idx + 1] if idx + 1 < len(args) else "all"
         args = args[:idx] + args[idx + 2:]
 
+    if "--company" in args:
+        idx = args.index("--company")
+        company_target = args[idx + 1] if idx + 1 < len(args) else None
+        args = args[:idx] + args[idx + 2:]
+
+    if mode == "gemini":
+        mode = "gemma"
+
+    if mode == "gemma" and _is_gemma_compat_probe(args):
+        print("[rotator] Gemma 4 compatibility shim is ready.", flush=True)
+        if any(arg in {"--version", "-v", "version"} for arg in args):
+            print("gemma4-shim 1.0.0", flush=True)
+        elif len(args) >= 2 and args[0] == "auth" and args[1] == "login":
+            print("Gemma 4 local branches do not require auth login.", flush=True)
+        else:
+            print("Use --prompt to send work to Gemma 4 via the rotator.", flush=True)
+        sys.exit(0)
+
     config   = load_config()
     accounts = config.get("accounts", [])
+    company = resolve_company(company_target, config)
+
+    if company_target and company is None:
+        print(f"[rotator] Unknown company '{company_target}'.", flush=True)
+        sys.exit(1)
 
     if mode == "codex":
-        accounts = [a for a in accounts if a.get("type") in ("codex", "openai_api")]
+        accounts = [a for a in accounts if a.get("type") in ("codex", "openai_api", "openrouter_api")]
     elif mode == "claude":
         accounts = [a for a in accounts if a.get("type") in ("claude", "anthropic_api")]
+    elif mode == "gemma":
+        accounts = [a for a in accounts if a.get("type") == "gemma"]
+
+    accounts = filter_accounts_for_company(accounts, company)
 
     accounts = sorted(
         [a for a in accounts if a.get("enabled", True)],
@@ -411,33 +530,34 @@ def main():
     )
 
     if not accounts:
-        print(f"[router] No accounts configured for mode '{mode}'.", flush=True)
+        print(f"[rotator] No accounts configured for mode '{mode}'.", flush=True)
         sys.exit(1)
 
     usage_threshold = config.get("settings", {}).get("usage_limit_pct", 100)
     fallback_retry_minutes = config.get("settings", {}).get("fallback_retry_minutes", 1)
     fallback_cooldown_seconds = max(1, int(fallback_retry_minutes)) * 60
-    print(f"[router] Mode: {mode} | Accounts: {len(accounts)} | Usage threshold: {usage_threshold}%", flush=True)
+    company_label = company.get("name") if company else "global"
+    print(f"[rotator] Mode: {mode} | Company: {company_label} | Accounts: {len(accounts)} | Usage threshold: {usage_threshold}%", flush=True)
 
     for account in accounts:
         aid       = account["id"]
         remaining = get_cooldown_remaining(aid, config)
         if remaining > 0:
             h, m = remaining // 3600, (remaining % 3600) // 60
-            print(f"[router] {account.get('label')}: cooldown {h}h {m}m remaining, skipping.", flush=True)
+            print(f"[rotator] {account.get('label')}: cooldown {h}h {m}m remaining, skipping.", flush=True)
             continue
 
         usage_pct = get_cached_usage_pct(aid, config)
         if usage_pct is not None and usage_pct >= usage_threshold:
-            print(f"[router] {account.get('label')}: usage {usage_pct:.1f}% >= {usage_threshold}%, skipping.", flush=True)
+            print(f"[rotator] {account.get('label')}: usage {usage_pct:.1f}% >= {usage_threshold}%, skipping.", flush=True)
             continue
 
         primary_remaining, secondary_remaining = get_cached_usage_limits(aid, config)
         if primary_remaining is not None and primary_remaining <= 0:
-            print(f"[router] {account.get('label')}: 5h remaining {primary_remaining:.0f}% = 0%, skipping.", flush=True)
+            print(f"[rotator] {account.get('label')}: 5h remaining {primary_remaining:.0f}% = 0%, skipping.", flush=True)
             continue
         if secondary_remaining is not None and secondary_remaining <= 0:
-            print(f"[router] {account.get('label')}: weekly remaining {secondary_remaining:.0f}% = 0%, skipping.", flush=True)
+            print(f"[rotator] {account.get('label')}: weekly remaining {secondary_remaining:.0f}% = 0%, skipping.", flush=True)
             continue
 
         result = prepare_account(account)
@@ -446,7 +566,7 @@ def main():
 
         cmd, env = result
         set_active_account(aid)
-        print(f"[router] Trying: {account.get('label')}", flush=True)
+        print(f"[rotator] Trying: {account.get('label')}", flush=True)
 
         account_args = _normalize_args_for_account(account, args)
         hit_limit, cooldown = run_process(
@@ -457,16 +577,16 @@ def main():
 
         if not hit_limit:
             set_active_account(None)
-            print(f"[router] Done: {account.get('label')}", flush=True)
+            print(f"[rotator] Done: {account.get('label')}", flush=True)
             sys.exit(0)
 
         set_active_account(None)
         set_rate_limited(aid, cooldown)
         h, m = cooldown // 3600, (cooldown % 3600) // 60
-        print(f"[router] {account.get('label')} rate limited for {h}h {m}m.", flush=True)
+        print(f"[rotator] {account.get('label')} rate limited for {h}h {m}m.", flush=True)
 
     set_active_account(None)
-    print("[router] All accounts exhausted or on cooldown.", flush=True)
+    print("[rotator] All accounts exhausted or on cooldown.", flush=True)
     sys.exit(1)
 
 

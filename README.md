@@ -1,46 +1,78 @@
-# Paperclip Router for Codex
+# Subs Rotator
 
-Do you have multiple smaller Codex Subscription accounts, but hate constantly logging out and back in just to keep Paperclip running?
+Multi-provider account rotator with automatic failover, cooldown handling, and encrypted local sessions.
 
-Paperclip Router for Codex solves exactly that problem.
+Originally built for Paperclip.  
+Now usable anywhere the target app can run an external command.
 
-It automatically switches between your Codex Subscription accounts, skips unavailable ones, and helps Paperclip keep working with far less manual account switching.
+Big win: Gemma 4 runs locally via Ollama, so Paperclip can run for free (or near-zero cost on VPS).
+
+GitHub: https://github.com/shoshibuilds/paperclip-subs-rotator
+
+## Supported account types
+
+- Codex Subscription
+- Claude
+- OpenAI API
+- OpenRouter API
+- Anthropic API
+- Gemma 4 (local via Ollama)
+- Gemini-compatible Gemma shim
 
 ## What it does
 
-Paperclip Router for Codex lets you use multiple Codex Subscription accounts inside Paperclip.
+Subs Rotator switches to the next eligible account when the current one is:
 
-When one account hits a rate limit or runs out of available usage, the router automatically skips it and switches to the next available account.
+- rate-limited
+- temporarily on cooldown
+- exhausted by usage rules
+- disabled or not authenticated
 
-This helps Paperclip agents keep running with less manual account switching.
+This keeps agents running with less manual login/key switching.
 
-## Features
+For cost-sensitive setups, you can keep Gemma 4 (Ollama) as your always-on base lane and use paid providers only as fallback.
 
-- Multi-account routing for Codex Subscription accounts
-- Automatic failover on rate limit
-- Usage-aware account skipping
-- 5h and weekly remaining usage display
-- Active account highlight in the GUI
-- Windows DPAPI-encrypted local session storage
-- Custom Codex executable path support
-- Paperclip-ready `router-codex.bat` launcher
+## Beyond Paperclip
 
-## How it works
+You can use Subs Rotator outside Paperclip too.
 
-1. Add your Codex Subscription accounts in the Paperclip Router app.
-2. Log in each account with `Browser login`.
-3. Order accounts by priority.
-4. Copy the `router-codex.bat` path into your Paperclip agent `Command` field.
-5. Paperclip runs through the router instead of calling Codex directly.
-6. If the current account is unavailable, the router switches to the next one.
+Practical examples:
 
-## Files
+- VS Code tasks: call `rotator-codex.bat` instead of direct `codex`.
+- Windows Task Scheduler: run `rotator-all.bat` for unattended jobs.
+- Custom scripts/tools: execute `rotator-*.bat` as your provider command wrapper.
 
-- `router_manager.py` — desktop GUI for account management, usage view, and Paperclip setup
-- `router.py` — runtime router that selects an account and launches Codex
-- `router-codex.bat` — Paperclip launcher for Codex routing
-- `paths.py` — data/session/config path handling
-- `crypto.py` — Windows DPAPI-based encryption helpers
+Requirement: the target app must support launching an external command.
+
+## OpenRouter API support
+
+OpenRouter is supported as a first-class API account type.
+
+- Add account: `+ OpenRouter API`
+- Save API key with `Set API key`
+- Router runs Codex lane with:
+  - `OPENAI_API_KEY=<your_key>`
+  - `OPENAI_BASE_URL=https://openrouter.ai/api/v1`
+  - `OPENAI_API_BASE=https://openrouter.ai/api/v1`
+
+Usage detail for OpenRouter links to OpenRouter credits/dashboard (instead of 5h/weekly subscription bars).
+
+## Companies and scoped launchers
+
+This build supports company scoping.
+
+- Accounts without company assignment act as global fallback.
+- Accounts assigned to companies are available only there.
+- Per-company launchers are generated automatically.
+
+## Generated launchers
+
+- `rotator-all.bat`
+- `rotator-codex.bat`
+- `rotator-claude.bat`
+- `rotator-gemma.bat`
+- `rotator-gemini.bat`
+- plus company-specific launchers under `companies/<slug>/`
 
 ## Setup
 
@@ -48,61 +80,51 @@ This helps Paperclip agents keep running with less manual account switching.
 
 - Windows
 - Python 3.11+
-- Codex installed and available on PATH, or set manually in the app under `Executables`
+- Codex/Claude CLI where needed
+- Ollama for Gemma 4
 
-### Run the app
+### Run app
 
-Run: `python router_manager.py`
+```bash
+python rotator_manager.py
+```
 
-### Use with Paperclip
+### Fresh machine bootstrap (optional)
 
-Set your Paperclip agent adapter to `Codex (local)`.
+```bash
+rotator-bootstrap.bat
+```
 
-Then set the `Command` field to:
+Bootstrap attempts Python/Node/CLI setup and then starts rotator manager.
 
-`C:\Users\<you>\.paperclip-router\router-codex.bat`
+## Usage notes
 
-## Usage behavior
-
-The router skips accounts when:
-
-- the account is disabled
-- the account is on cooldown
-- cached usage is above your configured auto-skip threshold
-- `5h remaining = 0%`
-- `weekly remaining = 0%`
-
-## Security
-
-Session data is stored locally and encrypted with Windows DPAPI.
-
-Sensitive local session files are not meant to be committed to GitHub.
-
-Typical local data lives under:
-
-`C:\Users\<you>\.paperclip-router\`
+- Codex subscription usage can show 5h + weekly remaining.
+- Claude usage depends on available provider signals; plan info fallback is shown when needed.
+- OpenRouter/OpenAI/Anthropic API accounts use API-key model and provider billing dashboards.
+- Sessions and keys are encrypted locally with Windows DPAPI.
 
 ## Screenshots
 
-### Main window
-![Main window](screenshots/main-window.jpg)
+Add screenshots to:
 
-### Usage dialog
-![Usage dialog](screenshots/usage-dialog.jpg)
+`screenshots/`
 
-### Paperclip setup
-![Paperclip setup](screenshots/paperclip-setup.jpg)
+Suggested names:
 
-## Notes
+- `main-window.jpg`
+- `usage-dialog.jpg`
+- `paperclip-setup.jpg`
 
-- This repository is the Codex-focused version of the router
-- Claude account routing is not part of this release
-- OpenAI API and Anthropic API account types may still appear in the app for key-based fallback setups
+Then embed in this README with standard markdown image links.
 
-## Status
+## Files
 
-Current release: `v1.0.0`
+- `rotator_manager.py` - desktop GUI
+- `rotator.py` - runtime router
+- `paths.py` - shared paths and executable discovery
+- `crypto.py` - encrypted local storage helpers
 
-## Author
+## Version
 
-Built by ShoshiBuilds.
+Current build line: `v1.2.1`

@@ -1,8 +1,8 @@
-# Sensitive data — NEVER commit these
-# (stored in ~/.paperclip-router/, not in this folder — but just in case)
+# Sensitive data - NEVER commit these
+# (stored in ~/.subs-rotator/, not in this folder - but just in case)
 *.bin
-router_config.json
-router_config.json.bak
+rotator_config.json
+rotator_config.json.bak
 
 # Python cache
 __pycache__/
@@ -13,3 +13,4 @@ __pycache__/
 dist/
 build/
 *.spec
+

@@ -1,5 +1,5 @@
 """
-Paperclip Router — encryption helpers
+Subs Rotator - encryption helpers
 Uses Windows DPAPI: data encrypted per Windows user account.
 A file copied to another machine cannot be decrypted.
 """
@@ -17,7 +17,7 @@ except ImportError:
 def encrypt_bytes(data: bytes) -> bytes:
     """Encrypt bytes with DPAPI. Falls back to plaintext if unavailable."""
     if _DPAPI_AVAILABLE:
-        return win32crypt.CryptProtectData(data, "paperclip-router", None, None, None, 0)
+        return win32crypt.CryptProtectData(data, "subs-rotator", None, None, None, 0)
     return data
 
 
@@ -32,6 +32,7 @@ def decrypt_bytes(data: bytes) -> bytes:
 def save_encrypted_json(path: Path, obj: dict):
     """Serialize obj to JSON and save encrypted."""
     raw = json.dumps(obj, indent=2, ensure_ascii=False).encode("utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(encrypt_bytes(raw))
 
 
@@ -43,7 +44,6 @@ def load_encrypted_json(path: Path) -> dict:
         raw = decrypt_bytes(path.read_bytes())
         return json.loads(raw.decode("utf-8"))
     except Exception:
-        # Fallback: try reading as plaintext (migration from unencrypted)
         try:
             return json.loads(path.read_text(encoding="utf-8"))
         except Exception:
@@ -64,6 +64,7 @@ def decrypt_session_to_file(encrypted_path: Path, target_path: Path):
     """Decrypt session and write plaintext to target (for Codex/Claude to read)."""
     session = load_encrypted_session(encrypted_path)
     if session:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
         target_path.write_text(
             json.dumps(session, indent=2, ensure_ascii=False),
             encoding="utf-8"
@@ -72,3 +73,4 @@ def decrypt_session_to_file(encrypted_path: Path, target_path: Path):
 
 def is_dpapi_available() -> bool:
     return _DPAPI_AVAILABLE
+
