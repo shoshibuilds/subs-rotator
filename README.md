@@ -106,17 +106,30 @@ Bootstrap attempts Python/Node/CLI setup and then starts rotator manager.
 
 ## Screenshots
 
-Add screenshots to:
+### Main window
+Account list, status, companies, and launcher copying in one place.
 
-`screenshots/`
+![Main window](screenshots/main-window.jpg)
 
-Suggested names:
+### Company groups
+Per-company account assignment with dedicated and shared fallback branches.
 
-- `main-window.jpg`
-- `usage-dialog.jpg`
-- `paperclip-setup.jpg`
+![Company groups](screenshots/company-groups.jpg)
 
-Then embed in this README with standard markdown image links.
+### Adapter lanes
+Live lanes overview and launcher scope hints.
+
+![Adapter lanes](screenshots/adapter-lanes.jpg)
+
+### Usage dialog
+Quick remaining usage view (5h + weekly where available).
+
+![Usage dialog](screenshots/usage-dialog.jpg)
+
+### Paperclip setup
+Example of wiring launcher command into Paperclip agent configuration.
+
+![Paperclip setup](screenshots/paperclip-setup.jpg)
 
 ## Files
 
